@@ -1,0 +1,2 @@
+python-telegram-bot[webhooks]==20.3
+quart>=0.18.0
