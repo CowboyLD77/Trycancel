@@ -36,6 +36,10 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("⚠️ Nothing to cancel")
 
+async def webhook_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Empty handler to acknowledge webhook requests
+    pass
+
 @app.route('/healthz')
 async def health_check():
     return 'OK', 200
@@ -48,7 +52,8 @@ async def main():
     application = Application.builder().token(telegram_token).build()
     
     # Add handlers
-    application.add_handler(CommandHandler("start", start))
+ application.add_handler(MessageHandler(filters.ALL, webhook_handler), group=-1)
+   application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("scan", scan_command))
     application.add_handler(CommandHandler("cancel", cancel_command))
     
