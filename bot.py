@@ -33,14 +33,31 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         cancellation_flags.pop(chat_id, None)
 
-async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    if chat_id in cancellation_flags:
-        cancellation_flags[chat_id] = True
-        await update.message.reply_text("⏳ Cancelling...")
-        logger.info(f"Cancellation initiated for {chat_id}")
-    else:
-        await update.message.reply_text("⚠️ Nothing to cancel (scan already completed)")
+    cancellation_flags[chat_id] = False
+    try:
+        await update.message.reply_text("🔄 Scan started... (10s)")
+        
+        for i in range(1, 11):
+            # First check before sleep
+            if cancellation_flags.get(chat_id, False):
+                await update.message.reply_text("❌ Cancelled!")
+                return
+            
+            await update.message.reply_text(f"Progress: {i}/10")
+            
+            # Split sleep into smaller intervals with checks
+            for _ in range(10):  # Check every 0.1 seconds
+                if cancellation_flags.get(chat_id, False):
+                    await update.message.reply_text("❌ Cancelled!")
+                    return
+                await asyncio.sleep(0.1)
+                
+        await update.message.reply_text("✅ Scan complete!")
+        
+    finally:
+        cancellation_flags.pop(chat_id, None)
 
 @app.route('/healthz')
 async def health_check():
