@@ -20,43 +20,53 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send welcome message"""
     await update.message.reply_text("🚀 Bot Started\nUse /scan to begin or /cancel to stop")
 
+
 async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle scan command with cancellation support"""
+    """Handle scan command by running it in the background"""
     chat_id = update.effective_chat.id
+
+    # Prevent multiple scans at once
+    if chat_id in cancellation_flags:
+        await update.message.reply_text("⚠️ Scan already in progress.")
+        return
+
     cancellation_flags[chat_id] = False
-    logger.info(f"Scan started for chat {chat_id}")
-    
+    await update.message.reply_text("🔄 Scan started... (10s)")
+
+    # Launch scan task in background
+    context.application.create_task(run_scan(chat_id, context))
+
+
+async def run_scan(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    """Run scanning with periodic cancellation checks"""
     try:
-        await update.message.reply_text("🔄 Scan started... (10s)")
-        
         for i in range(1, 11):
-            # Check cancellation before each iteration
             if cancellation_flags.get(chat_id, False):
-                await update.message.reply_text("❌ Scan cancelled!")
+                await context.bot.send_message(chat_id, "❌ Scan cancelled!")
                 return
-                
-            await update.message.reply_text(f"Progress: {i}/10")
-            
-            # Split sleep into smaller intervals with checks
-            for _ in range(10):  # Check every 0.1 seconds
+
+            await context.bot.send_message(chat_id, f"Progress: {i}/10")
+
+            for _ in range(10):  # Check every 0.1s
                 if cancellation_flags.get(chat_id, False):
-                    await update.message.reply_text("❌ Scan cancelled!")
+                    await context.bot.send_message(chat_id, "❌ Scan cancelled!")
                     return
                 await asyncio.sleep(0.1)
-        
-        await update.message.reply_text("✅ Scan complete!")
-        
+
+        await context.bot.send_message(chat_id, "✅ Scan complete!")
+
     except Exception as e:
-        logger.error(f"Scan error: {str(e)}")
-        await update.message.reply_text("⚠️ Scan failed!")
+        logger.error(f"Scan error for {chat_id}: {e}")
+        await context.bot.send_message(chat_id, "⚠️ Scan failed!")
     finally:
         cancellation_flags.pop(chat_id, None)
+
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle cancellation requests"""
     chat_id = update.effective_chat.id
     logger.info(f"Cancellation request from {chat_id}")
-    
+
     if chat_id in cancellation_flags:
         cancellation_flags[chat_id] = True
         await update.message.reply_text("⏳ Stopping scan...")
@@ -83,23 +93,22 @@ async def main():
     global application
     telegram_token = os.getenv("TELEGRAM_TOKEN")
     webhook_url = f"{os.getenv('RENDER_WEBHOOK_URL')}/telegram"
-    
-    # Create PTB application
+
     application = Application.builder().token(telegram_token).build()
-    
-    # Register handlers
+
+    # Register command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("scan", scan_command))
     application.add_handler(CommandHandler("cancel", cancel_command))
-    
-    # Configure webhook
+
+    # Set webhook
     await application.bot.set_webhook(
         url=webhook_url,
         drop_pending_updates=True
     )
     logger.info(f"Webhook configured: {webhook_url}")
-    
-    # Start application with proper async context
+
+    # Run both telegram and web server
     async with application:
         await application.start()
         await app.run_task(host='0.0.0.0', port=int(os.getenv("PORT", 8000)))
