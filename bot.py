@@ -2,10 +2,14 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 import os
 import asyncio
-from quart import Quart
+from quart import Quart, request, jsonify
 
 app = Quart(__name__)
 cancellation_flags = {}
+
+# Initialize PTB application
+telegram_token = os.getenv("TELEGRAM_TOKEN")
+application = Application.builder().token(telegram_token).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Send /scan or /cancel")
@@ -36,33 +40,35 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("⚠️ Nothing to cancel")
 
-async def webhook_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
-
 @app.route('/healthz')
 async def health_check():
     return 'OK', 200
 
+@app.route('/telegram', methods=['POST'])
+async def telegram_webhook():
+    """Main webhook endpoint for Telegram updates"""
+    if request.method == "POST":
+        await application.update_queue.put(
+            Update.de_json(data=await request.get_json(), bot=application.bot)
+        )
+    return jsonify({"status": "ok"}), 200
+
 async def main():
-    telegram_token = os.getenv("TELEGRAM_TOKEN")
     webhook_url = f"{os.getenv('RENDER_WEBHOOK_URL')}/telegram"
     
-    application = Application.builder().token(telegram_token).build()
-    
-    # Add handlers with proper indentation
-    application.add_handler(MessageHandler(filters.ALL, webhook_handler), group=-1)
+    # Register handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("scan", scan_command))
     application.add_handler(CommandHandler("cancel", cancel_command))
     
-    # Set up webhook
-    await application.bot.set_webhook(webhook_url)
+    # Set webhook
+    await application.bot.set_webhook(
+        url=webhook_url,
+        secret_token=os.getenv("WEBHOOK_SECRET")  # Optional security
+    )
     
-    # Start both Quart and PTB
-    async with application:
-        await application.start()
-        await app.run_task(host='0.0.0.0', port=int(os.getenv("PORT", 8000)))
-        await application.stop()
+    # Start server
+    await app.run_task(host='0.0.0.0', port=int(os.getenv("PORT", 8000)))
 
 if __name__ == "__main__":
     asyncio.run(main())
