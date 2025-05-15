@@ -38,8 +38,9 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_id in cancellation_flags:
         cancellation_flags[chat_id] = True
         await update.message.reply_text("⏳ Cancelling...")
+        logger.info(f"Cancellation initiated for {chat_id}")
     else:
-        await update.message.reply_text("⚠️ Nothing to cancel")
+        await update.message.reply_text("⚠️ Nothing to cancel (scan already completed)")
 
 @app.route('/healthz')
 async def health_check():
